@@ -1,0 +1,3 @@
+target/
+reports/
+src/main/resources/db.properties
