@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import com.smartstock.api.ApiUtil;
 import com.smartstock.api.ProductApi;
 import com.smartstock.api.SaleApi;
+import com.smartstock.api.ReportApi;
 import com.smartstock.model.User;
 import com.smartstock.service.AuthService;
 import com.sun.net.httpserver.HttpExchange;
@@ -72,6 +73,7 @@ public class WebApp {
         });
         ProductApi.register(server);
         SaleApi.register(server);
+        ReportApi.register(server);
         server.start();
         System.out.println("SmartStock is running at http://localhost:8080");
 

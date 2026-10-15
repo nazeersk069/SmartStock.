@@ -39,6 +39,12 @@
 
     td input.sell-qty { width: 70px; margin: 0; padding: 6px; display: inline-block; }
     button.sell-btn { width: auto; padding: 6px 14px; font-size: 14px; margin-left: 6px; }
+
+    .alert-panel { border-left: 6px solid #c0392b; }
+    .alert-panel ul { margin: 0; padding-left: 20px; }
+    .alert-panel li { margin: 6px 0; }
+    .report-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+    .report-buttons button { width: auto; padding: 10px 20px; }
   </style>
 </head>
 <body>
@@ -58,6 +64,12 @@
     </div>
 
     <div class="content">
+
+      <div class="panel alert-panel">
+        <h2>Low stock alerts</h2>
+        <div id="lowSummary" class="summary"></div>
+        <ul id="lowList"></ul>
+      </div>
 
       <div class="panel">
         <h2>Add product</h2>
@@ -101,6 +113,15 @@
         </table>
       </div>
 
+      <div class="panel hidden" id="reportPanel">
+        <h2>Reports (admin only)</h2>
+        <div class="report-buttons">
+          <button id="dlProducts">Download products CSV</button>
+          <button id="dlSales">Download sales CSV</button>
+        </div>
+        <div id="reportMsg" class="msg"></div>
+      </div>
+
     </div>
   </div>
 
@@ -119,6 +140,11 @@
       el('who').textContent = user.username + ' (' + user.role + ')';
       el('loginBox').classList.add('hidden');
       el('dashboard').classList.remove('hidden');
+      if (user.role === 'ADMIN') {
+        el('reportPanel').classList.remove('hidden');
+      } else {
+        el('reportPanel').classList.add('hidden');
+      }
       loadProducts();
       loadSales();
     }
@@ -166,6 +192,23 @@
       const td = document.createElement('td');
       td.textContent = value;
       tr.appendChild(td);
+    }
+
+    function showLowStock(list) {
+      const ul = el('lowList');
+      ul.innerHTML = '';
+      const low = list.filter(function (p) { return p.lowStock; });
+
+      if (low.length === 0) {
+        el('lowSummary').textContent = 'All products are well stocked.';
+        return;
+      }
+      el('lowSummary').textContent = low.length + ' product(s) need restocking:';
+      low.forEach(function (p) {
+        const li = document.createElement('li');
+        li.textContent = p.name + ' - only ' + p.quantity + ' left (reorder at ' + p.reorderLevel + ')';
+        ul.appendChild(li);
+      });
     }
 
     async function loadProducts() {
@@ -219,6 +262,8 @@
         el('summary').textContent = list.length === 0
           ? 'No products yet. Add your first one above.'
           : 'Total products: ' + list.length + '   |   Low stock: ' + lowCount;
+
+        showLowStock(list);
       } catch (e) {
         el('summary').textContent = 'Problem loading products: ' + e.message;
       }
@@ -317,6 +362,34 @@
       }
     }
 
+    async function downloadCsv(url, filename) {
+      const msg = el('reportMsg');
+      msg.className = 'msg';
+      msg.textContent = 'Preparing ' + filename + '...';
+      try {
+        const res = await fetch(url, { headers: authHeaders() });
+        if (!res.ok) {
+          const data = await res.json();
+          msg.className = 'msg err-msg';
+          msg.textContent = data.error;
+          return;
+        }
+        const blob = await res.blob();
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(function () { URL.revokeObjectURL(link.href); }, 1000);
+        msg.className = 'msg ok-msg';
+        msg.textContent = 'Downloaded ' + filename + ' (check your Downloads folder)';
+      } catch (e) {
+        msg.className = 'msg err-msg';
+        msg.textContent = 'Problem: ' + e.message;
+      }
+    }
+
     async function checkSession() {
       const token = sessionStorage.getItem('token');
       if (!token) return;
@@ -335,6 +408,12 @@
     el('loginBtn').addEventListener('click', login);
     el('logoutBtn').addEventListener('click', logout);
     el('addBtn').addEventListener('click', addProduct);
+    el('dlProducts').addEventListener('click', function () {
+      downloadCsv('/api/export/products', 'products.csv');
+    });
+    el('dlSales').addEventListener('click', function () {
+      downloadCsv('/api/export/sales', 'sales.csv');
+    });
     el('password').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') login();
     });
