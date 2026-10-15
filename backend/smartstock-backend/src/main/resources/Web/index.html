@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>SmartStock</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f6f8; margin: 0; }
+    .hidden { display: none; }
+    .card { background: #fff; width: 320px; margin: 100px auto; padding: 30px;
+            border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    h1 { color: #1f3a5f; text-align: center; margin-top: 0; }
+    input { width: 100%; padding: 10px; margin: 8px 0; box-sizing: border-box; }
+    button { width: 100%; padding: 10px; background: #1f3a5f; color: #fff;
+             border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+    #error { color: #c0392b; min-height: 20px; text-align: center; }
+
+    .topbar { background: #1f3a5f; color: #fff; padding: 14px 24px;
+              display: flex; justify-content: space-between; align-items: center; }
+    .topbar button { width: auto; background: #fff; color: #1f3a5f; padding: 6px 14px; }
+    .content { padding: 24px; max-width: 1100px; margin: 0 auto; }
+
+    .panel { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 20px;
+             box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .panel h2 { margin-top: 0; color: #1f3a5f; }
+    .form-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .form-row input { flex: 1; min-width: 120px; margin: 0; }
+    .form-row button { width: auto; padding: 10px 20px; }
+    .msg { margin-top: 10px; min-height: 20px; }
+    .ok-msg { color: #1e8449; }
+    .err-msg { color: #c0392b; }
+
+    .summary { margin-bottom: 12px; color: #555; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px; text-align: left; border-bottom: 1px solid #e3e6ea; }
+    th { background: #eef1f5; color: #1f3a5f; }
+    tr.low { background: #fdecea; }
+    td.bad { color: #c0392b; font-weight: bold; }
+    td.good { color: #1e8449; font-weight: bold; }
+
+    td input.sell-qty { width: 70px; margin: 0; padding: 6px; display: inline-block; }
+    button.sell-btn { width: auto; padding: 6px 14px; font-size: 14px; margin-left: 6px; }
+  </style>
+</head>
+<body>
+
+  <div id="loginBox" class="card">
+    <h1>SmartStock</h1>
+    <input id="username" placeholder="Username">
+    <input id="password" type="password" placeholder="Password">
+    <div id="error"></div>
+    <button id="loginBtn">Login</button>
+  </div>
+
+  <div id="dashboard" class="hidden">
+    <div class="topbar">
+      <div><strong>SmartStock</strong> &nbsp;|&nbsp; <span id="who"></span></div>
+      <button id="logoutBtn">Logout</button>
+    </div>
+
+    <div class="content">
+
+      <div class="panel">
+        <h2>Add product</h2>
+        <div class="form-row">
+          <input id="pName" placeholder="Name">
+          <input id="pCategory" placeholder="Category">
+          <input id="pPrice" type="number" step="0.01" min="0" placeholder="Price">
+          <input id="pQty" type="number" min="0" placeholder="Quantity">
+          <input id="pReorder" type="number" min="0" placeholder="Reorder level">
+          <button id="addBtn">Add</button>
+        </div>
+        <div id="addMsg" class="msg"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Products</h2>
+        <div class="summary" id="summary"></div>
+        <div id="sellMsg" class="msg"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>Name</th><th>Category</th><th>Price</th>
+              <th>Qty</th><th>Reorder at</th><th>Status</th><th>Sell</th>
+            </tr>
+          </thead>
+          <tbody id="productBody"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Sales history</h2>
+        <div class="summary" id="salesSummary"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>Product</th><th>Sold by</th>
+              <th>Qty</th><th>Total</th><th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="salesBody"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function el(id) { return document.getElementById(id); }
+
+    function authHeaders() {
+      return { 'X-Auth-Token': sessionStorage.getItem('token') || '' };
+    }
+
+    function jsonHeaders() {
+      return Object.assign({ 'Content-Type': 'application/json' }, authHeaders());
+    }
+
+    function showDashboard(user) {
+      el('who').textContent = user.username + ' (' + user.role + ')';
+      el('loginBox').classList.add('hidden');
+      el('dashboard').classList.remove('hidden');
+      loadProducts();
+      loadSales();
+    }
+
+    function showLogin() {
+      el('dashboard').classList.add('hidden');
+      el('loginBox').classList.remove('hidden');
+    }
+
+    async function login() {
+      el('error').textContent = 'Checking...';
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: el('username').value,
+            password: el('password').value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          el('error').textContent = data.error;
+          return;
+        }
+        sessionStorage.setItem('token', data.token);
+        el('password').value = '';
+        el('error').textContent = '';
+        showDashboard(data);
+      } catch (e) {
+        el('error').textContent = 'Problem: ' + e.message;
+      }
+    }
+
+    async function logout() {
+      try {
+        await fetch('/api/logout', { method: 'POST', headers: authHeaders() });
+      } catch (e) { }
+      sessionStorage.removeItem('token');
+      el('error').textContent = '';
+      showLogin();
+    }
+
+    function addCell(tr, value) {
+      const td = document.createElement('td');
+      td.textContent = value;
+      tr.appendChild(td);
+    }
+
+    async function loadProducts() {
+      const body = el('productBody');
+      try {
+        const res = await fetch('/api/products', { headers: authHeaders() });
+        if (res.status === 401) {
+          sessionStorage.removeItem('token');
+          showLogin();
+          return;
+        }
+        const list = await res.json();
+        body.innerHTML = '';
+
+        let lowCount = 0;
+        list.forEach(function (p) {
+          const tr = document.createElement('tr');
+          if (p.lowStock) { tr.classList.add('low'); lowCount++; }
+
+          addCell(tr, p.id);
+          addCell(tr, p.name);
+          addCell(tr, p.category);
+          addCell(tr, Number(p.price).toFixed(2));
+          addCell(tr, p.quantity);
+          addCell(tr, p.reorderLevel);
+
+          const status = document.createElement('td');
+          status.textContent = p.lowStock ? 'LOW STOCK' : 'OK';
+          status.className = p.lowStock ? 'bad' : 'good';
+          tr.appendChild(status);
+
+          const actions = document.createElement('td');
+          const qty = document.createElement('input');
+          qty.type = 'number';
+          qty.min = '1';
+          qty.value = '1';
+          qty.className = 'sell-qty';
+          const btn = document.createElement('button');
+          btn.textContent = 'Sell';
+          btn.className = 'sell-btn';
+          btn.addEventListener('click', function () {
+            sellProduct(p.id, qty.value);
+          });
+          actions.appendChild(qty);
+          actions.appendChild(btn);
+          tr.appendChild(actions);
+
+          body.appendChild(tr);
+        });
+
+        el('summary').textContent = list.length === 0
+          ? 'No products yet. Add your first one above.'
+          : 'Total products: ' + list.length + '   |   Low stock: ' + lowCount;
+      } catch (e) {
+        el('summary').textContent = 'Problem loading products: ' + e.message;
+      }
+    }
+
+    async function loadSales() {
+      const body = el('salesBody');
+      try {
+        const res = await fetch('/api/sales', { headers: authHeaders() });
+        if (res.status === 401) {
+          sessionStorage.removeItem('token');
+          showLogin();
+          return;
+        }
+        const list = await res.json();
+        body.innerHTML = '';
+
+        let revenue = 0;
+        list.forEach(function (s) {
+          const tr = document.createElement('tr');
+          addCell(tr, s.id);
+          addCell(tr, s.product);
+          addCell(tr, s.soldBy);
+          addCell(tr, s.quantity);
+          addCell(tr, Number(s.total).toFixed(2));
+          addCell(tr, s.date);
+          body.appendChild(tr);
+          revenue += Number(s.total);
+        });
+
+        el('salesSummary').textContent = list.length === 0
+          ? 'No sales yet.'
+          : 'Total sales: ' + list.length + '   |   Revenue: ' + revenue.toFixed(2);
+      } catch (e) {
+        el('salesSummary').textContent = 'Problem loading sales: ' + e.message;
+      }
+    }
+
+    async function sellProduct(productId, quantity) {
+      const msg = el('sellMsg');
+      msg.className = 'msg';
+      msg.textContent = 'Selling...';
+      try {
+        const res = await fetch('/api/sell', {
+          method: 'POST',
+          headers: jsonHeaders(),
+          body: JSON.stringify({ productId: productId, quantity: quantity })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.className = 'msg err-msg';
+          msg.textContent = data.error;
+          return;
+        }
+        msg.className = 'msg ok-msg';
+        msg.textContent = data.message;
+        loadProducts();
+        loadSales();
+      } catch (e) {
+        msg.className = 'msg err-msg';
+        msg.textContent = 'Problem: ' + e.message;
+      }
+    }
+
+    async function addProduct() {
+      const msg = el('addMsg');
+      msg.className = 'msg';
+      msg.textContent = 'Saving...';
+      try {
+        const res = await fetch('/api/products', {
+          method: 'POST',
+          headers: jsonHeaders(),
+          body: JSON.stringify({
+            name: el('pName').value,
+            category: el('pCategory').value,
+            price: el('pPrice').value,
+            quantity: el('pQty').value,
+            reorderLevel: el('pReorder').value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.className = 'msg err-msg';
+          msg.textContent = data.error;
+          return;
+        }
+        msg.className = 'msg ok-msg';
+        msg.textContent = data.message;
+        ['pName', 'pCategory', 'pPrice', 'pQty', 'pReorder'].forEach(function (id) {
+          el(id).value = '';
+        });
+        loadProducts();
+      } catch (e) {
+        msg.className = 'msg err-msg';
+        msg.textContent = 'Problem: ' + e.message;
+      }
+    }
+
+    async function checkSession() {
+      const token = sessionStorage.getItem('token');
+      if (!token) return;
+      try {
+        const res = await fetch('/api/me', { headers: authHeaders() });
+        if (res.ok) {
+          showDashboard(await res.json());
+        } else {
+          sessionStorage.removeItem('token');
+        }
+      } catch (e) {
+        sessionStorage.removeItem('token');
+      }
+    }
+
+    el('loginBtn').addEventListener('click', login);
+    el('logoutBtn').addEventListener('click', logout);
+    el('addBtn').addEventListener('click', addProduct);
+    el('password').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') login();
+    });
+    checkSession();
+  </script>
+</body>
+</html>

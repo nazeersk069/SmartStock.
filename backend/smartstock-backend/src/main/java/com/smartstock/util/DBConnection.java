@@ -12,6 +12,13 @@ public class DBConnection {
     private static final Properties props = new Properties();
 
     static {
+        try {
+            // Load the SQL Server driver explicitly (needed for the web server threads)
+            Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException("SQL Server driver not found", e);
+        }
+
         try (InputStream in = DBConnection.class.getClassLoader()
                 .getResourceAsStream("db.properties")) {
             if (in == null) {
